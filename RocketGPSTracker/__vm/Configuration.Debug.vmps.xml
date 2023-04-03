@@ -1,0 +1,6 @@
+<VisualMicro>
+  <Program Name="rocketGPSTracker" Ext=".ino" Location="C:\Users\nitefallz\Documents\Arduino\rocketGPSTracker">
+    <Debug LocalPort="COM9" />
+    <Compile />
+  </Program>
+</VisualMicro>

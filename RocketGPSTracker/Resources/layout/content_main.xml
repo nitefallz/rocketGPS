@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+  xmlns:android="http://schemas.android.com/apk/res/android"
+  xmlns:app="http://schemas.android.com/apk/res-auto"
+  xmlns:tools="http://schemas.android.com/tools"
+  android:layout_width="match_parent"
+  android:layout_height="match_parent"
+  app:layout_behavior="@string/appbar_scrolling_view_behavior"
+  tools:showIn="@layout/activity_main">
+
+  <com.google.android.gms.maps.MapView
+    android:id="@+id/mapView"
+    android:layout_width="0dp"
+    android:layout_height="0dp"
+    app:layout_constraintStart_toStartOf="parent"
+    app:layout_constraintTop_toTopOf="parent"
+    app:layout_constraintEnd_toEndOf="parent"
+    app:layout_constraintBottom_toTopOf="@+id/bleDataTextView"
+    android:minWidth="25px"
+    android:minHeight="25px">
+  </com.google.android.gms.maps.MapView>
+
+  <ImageButton
+    android:id="@+id/mapTypeToggleButton"
+    android:layout_width="50dp"
+    android:layout_height="50dp"
+    android:src="@android:drawable/radiobutton_on_background"
+    android:background="?attr/selectableItemBackgroundBorderless"
+    android:contentDescription="@string/map_type_toggle_button_description"
+    app:layout_constraintBottom_toBottomOf="parent"
+    app:layout_constraintEnd_toEndOf="parent"
+    android:layout_marginEnd="6dp"
+    android:layout_marginBottom="150dp" />
+
+  <TextView
+    android:id="@+id/bleDataTextView"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:textSize="14sp"
+    android:textColor="#000000"
+    android:padding="10dp"
+    app:layout_constraintBottom_toBottomOf="parent"
+    app:layout_constraintStart_toStartOf="parent"
+    app:layout_constraintEnd_toEndOf="parent" />
+
+  <ImageButton
+    android:id="@+id/toggleCenter"
+    android:layout_width="50dp"
+    android:layout_height="50dp"
+    android:src="@android:drawable/radiobutton_off_background"
+    android:background="?attr/selectableItemBackgroundBorderless"
+    android:contentDescription="@string/map_type_toggle_button_description"
+    app:layout_constraintBottom_toBottomOf="parent"
+    app:layout_constraintEnd_toEndOf="parent"
+    android:layout_marginEnd="6dp"
+    android:layout_marginBottom="200dp" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>
