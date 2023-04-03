@@ -243,7 +243,7 @@ namespace RocketGPSTracker
         {
             _googleMap = googleMap;
             _googleMap.UiSettings.ZoomControlsEnabled = true;
-            if (ContextCompat.CheckSelfPermission(this, Manifest.Permission.AccessFineLocation) == Permission.Granted)
+            if(ContextCompat.CheckSelfPermission(this, Manifest.Permission.AccessFineLocation) == Permission.Granted)
             {
                 _googleMap.MyLocationEnabled = true;
             }
@@ -261,7 +261,7 @@ namespace RocketGPSTracker
             SetUpLocationListener();
             _googleMap.MapType = GoogleMap.MapTypeNormal;
             MoveCameraToCoordinates(_initialLatitude, _initialLongitude);
-
+            
 
         }
 
@@ -517,7 +517,7 @@ namespace RocketGPSTracker
                 {
                     _googleMap.MoveCamera(CameraUpdateFactory.NewLatLngZoom(newPosition, 15));
                 }
-                AddDestinationMarker(latitude, longitude);
+                AddDestinationMarker(latitude,longitude);
             });
         }
 
