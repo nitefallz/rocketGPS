@@ -3,29 +3,27 @@ using Android.App;
 using Android.Bluetooth;
 using Android.Bluetooth.LE;
 using Android.Content;
+using Android.Content.PM;
 using Android.Gms.Maps;
 using Android.Gms.Maps.Model;
+using Android.Graphics;
+using Android.Locations;
 using Android.OS;
 using Android.Runtime;
 using Android.Views;
 using Android.Widget;
 using AndroidX.AppCompat.App;
+using AndroidX.Core.App;
+using AndroidX.Core.Content;
 using Google.Android.Material.Snackbar;
 using Java.Util;
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using Android.Content.PM;
-using Android.Graphics;
-using AndroidX.Core.App;
-using AndroidX.Core.Content;
 using AlertDialog = AndroidX.AppCompat.App.AlertDialog;
 using Exception = System.Exception;
 using Toolbar = AndroidX.AppCompat.Widget.Toolbar;
-using Xamarin.Essentials;
-using Android.Locations;
 
 namespace RocketGPSTracker
 {
@@ -38,21 +36,18 @@ namespace RocketGPSTracker
         private BluetoothGatt _bluetoothGatt;
         private MapView _mapView;
         private GoogleMap _googleMap;
-        private const int REQUEST_BLUETOOTH_PERMISSIONS = 2;
+        private const int RequestBluetoothPermissions = 2;
         private bool _autoCenter = false;
         private ImageButton _toggleCenter;
         private ScanCallback _scanCallback;
-        public bool isConnected = false;
+        public bool IsConnected = false;
         private BluetoothGattCharacteristic _coordinateCharacteristic;
-        private static readonly UUID COORDINATE_SERVICE_UUID = UUID.FromString("4fafc201-1fb5-459e-8fcc-c5c9c331914b");
-        private static readonly UUID COORDINATE_CHARACTERISTIC_UUID = UUID.FromString("beb5483e-36e1-4688-b7f5-ea07361b26a8");
-
         private double _initialLatitude;
         private double _initialLongitude;
-        private AlertDialog _deviceListDialog;
-        private BluetoothDeviceReceiver _deviceReceiver;
         private TextView _bleDataTextView;
         private PolylineOptions _polylineOptions;
+        private static readonly UUID CoordinateServiceUuid = UUID.FromString("4fafc201-1fb5-459e-8fcc-c5c9c331914b");
+        private static readonly UUID CoordinateCharacteristicUuid = UUID.FromString("beb5483e-36e1-4688-b7f5-ea07361b26a8");
 
 
         protected override async void OnCreate(Bundle savedInstanceState)
@@ -70,8 +65,8 @@ namespace RocketGPSTracker
                 _bleDataTextView = FindViewById<TextView>(Resource.Id.bleDataTextView);
 
 
-                _initialLatitude = 40.1630475; //40.1630475,-76.3007722
-                _initialLongitude = -76.3007722;
+                _initialLatitude = 39.771823; //40.1630475,-76.3007722
+                _initialLongitude = -74.897318; //39.771823, -74.897318
 
                 ImageButton mapTypeToggleButton = FindViewById<ImageButton>(Resource.Id.mapTypeToggleButton);
 
@@ -117,7 +112,7 @@ namespace RocketGPSTracker
 
                 if (permissionsToRequest.Count > 0)
                 {
-                    RequestPermissions(permissionsToRequest.ToArray(), REQUEST_BLUETOOTH_PERMISSIONS);
+                    RequestPermissions(permissionsToRequest.ToArray(), RequestBluetoothPermissions);
                 }
                 else
                 {
@@ -182,10 +177,10 @@ namespace RocketGPSTracker
 
         public void OnServicesDiscovered()
         {
-            BluetoothGattService coordinateService = _bluetoothGatt.GetService(COORDINATE_SERVICE_UUID);
+            BluetoothGattService coordinateService = _bluetoothGatt.GetService(CoordinateServiceUuid);
             if (coordinateService != null)
             {
-                _coordinateCharacteristic = coordinateService.GetCharacteristic(COORDINATE_CHARACTERISTIC_UUID);
+                _coordinateCharacteristic = coordinateService.GetCharacteristic(CoordinateCharacteristicUuid);
                 if (_coordinateCharacteristic != null)
                 {
                     _bluetoothGatt.SetCharacteristicNotification(_coordinateCharacteristic, true);
@@ -201,7 +196,7 @@ namespace RocketGPSTracker
         {
             RunOnUiThread(() =>
             {
-                string connectionStatus = isConnected ? "Connected" : "Disconnected";
+                string connectionStatus = IsConnected ? "Connected" : "Disconnected";
                 _bleDataTextView.Text += $"\nBluetooth Status: {connectionStatus}";
             });
         }
@@ -209,7 +204,7 @@ namespace RocketGPSTracker
 
         public void OnCharacteristicChanged(BluetoothGattCharacteristic characteristic)
         {
-            if (characteristic.Uuid.Equals(COORDINATE_CHARACTERISTIC_UUID))
+            if (characteristic.Uuid.Equals(CoordinateCharacteristicUuid))
             {
                 string receivedData = characteristic.GetStringValue(0);
                 if (!string.IsNullOrEmpty(receivedData))
@@ -262,11 +257,9 @@ namespace RocketGPSTracker
                 _autoCenter = !_autoCenter;
             };
 
-            // Set the map type to satellite
             SetUpLocationListener();
             _googleMap.MapType = GoogleMap.MapTypeNormal;
             MoveCameraToCoordinates(_initialLatitude, _initialLongitude);
-            
 
         }
 
@@ -298,7 +291,7 @@ namespace RocketGPSTracker
             }
             catch (Exception ex)
             {
-                ;
+                throw;
             }
         }
         public override bool OnCreateOptionsMenu(IMenu menu)
@@ -307,33 +300,11 @@ namespace RocketGPSTracker
             return true;
         }
 
-        public override bool OnOptionsItemSelected(IMenuItem item)
-        {
-            int id = item.ItemId;
-            if (id == Resource.Id.action_settings)
-            {
-                return true;
-            }
-            else if (id == Resource.Id.action_bluetooth)
-            {
-                ShowDeviceListDialog();
-                return true;
-            }
-
-            return base.OnOptionsItemSelected(item);
-        }
-
-        private void FabOnClick(object sender, EventArgs eventArgs)
-        {
-            View view = (View)sender;
-            Snackbar.Make(view, "Replace with your own action", Snackbar.LengthLong)
-                .SetAction("Action", (View.IOnClickListener)null).Show();
-        }
 
         public override void OnRequestPermissionsResult(int requestCode, string[] permissions,
             Android.Content.PM.Permission[] grantResults)
         {
-            if (requestCode == REQUEST_BLUETOOTH_PERMISSIONS)
+            if (requestCode == RequestBluetoothPermissions)
             {
                 if (grantResults.Length >= 6 &&
                     grantResults[0] == Android.Content.PM.Permission.Granted &&
@@ -356,10 +327,8 @@ namespace RocketGPSTracker
                                 .SetScanMode(Android.Bluetooth.LE.ScanMode.LowLatency)
                                 .Build();
 
-                            _bluetoothAdapter.BluetoothLeScanner.StartScan(new List<ScanFilter>(), scanSettings,
-                                _scanCallback);
+                            _bluetoothAdapter.BluetoothLeScanner.StartScan(new List<ScanFilter>(), scanSettings, _scanCallback);
                         }
-
                     }
                 }
                 else
@@ -370,9 +339,7 @@ namespace RocketGPSTracker
                         .Show();
                 }
             }
-
             base.OnRequestPermissionsResult(requestCode, permissions, grantResults);
-
         }
 
         protected override void OnResume()
@@ -391,7 +358,6 @@ namespace RocketGPSTracker
         protected override void OnDestroy()
         {
             // Unregister the BroadcastReceiver
-            UnregisterReceiver(_deviceReceiver);
 
             _mapView.OnDestroy();
             base.OnDestroy();
@@ -435,71 +401,6 @@ namespace RocketGPSTracker
             }
         }
 
-        private void ShowDeviceListDialog()
-        {
-            try
-            {
-                HashSet<BluetoothDevice> deviceSet = new HashSet<BluetoothDevice>(_bluetoothAdapter.BondedDevices);
-
-                AlertDialog.Builder builder = new AlertDialog.Builder(this);
-                builder.SetTitle("Choose a Bluetooth device");
-
-                LayoutInflater inflater = LayoutInflater.From(this);
-                View dialogView = inflater.Inflate(Resource.Layout.device_list, null);
-
-                ListView listView = dialogView.FindViewById<ListView>(Resource.Id.device_list);
-                ArrayAdapter<string> adapter =
-                    new ArrayAdapter<string>(this, Resource.Layout.device_list_item, Resource.Id.device_name);
-
-                foreach (var device in deviceSet)
-                {
-                    adapter.Add(device.Name + "\n" + device.Address);
-                }
-
-                listView.Adapter = adapter;
-                listView.ItemClick += async (sender, e) =>
-                {
-                    BluetoothDevice selectedDevice = deviceSet.ElementAt(e.Position);
-                    SaveDeviceAddress(selectedDevice.Address); // Save the device address
-                    await ConnectToDeviceAsync(selectedDevice.Address);
-                    _deviceListDialog.Dismiss();
-                };
-
-                builder.SetView(dialogView);
-                _deviceListDialog = builder.Create();
-                _deviceListDialog.Show();
-
-                _deviceReceiver.OnDeviceFound += (deviceAddress) =>
-                {
-                    BluetoothDevice device = _bluetoothAdapter.GetRemoteDevice(deviceAddress);
-                    if (!deviceSet.Contains(device))
-                    {
-                        deviceSet.Add(device);
-                        RunOnUiThread(() =>
-                        {
-                            adapter.Add(device.Name + "\n" + device.Address);
-                            adapter.NotifyDataSetChanged();
-                        });
-                    }
-                };
-
-                // Start discovering devices
-                if (_bluetoothAdapter.IsEnabled)
-                {
-                    var scanSettings = new ScanSettings.Builder()
-                        .SetScanMode(Android.Bluetooth.LE.ScanMode.LowLatency)
-                        .Build();
-
-                    _bluetoothAdapter.BluetoothLeScanner.StartScan(new List<ScanFilter>(), scanSettings, _scanCallback);
-                }
-
-            }
-            catch (Exception ex)
-            {
-                Toast.MakeText(this, "Error: " + ex.Message, ToastLength.Long).Show();
-            }
-        }
-
         private void SaveDeviceAddress(string deviceAddress)
         {
             ISharedPreferences prefs = GetSharedPreferences("RocketGPSTrackerPreferences", FileCreationMode.Private);
@@ -526,138 +427,8 @@ namespace RocketGPSTracker
                 {
                     _googleMap.MoveCamera(CameraUpdateFactory.NewLatLngZoom(newPosition, 15));
                 }
-                AddDestinationMarker(latitude,longitude);
+                AddDestinationMarker(latitude, longitude);
             });
-        }
-
-    }
-
-    public class BluetoothDeviceReceiver : BroadcastReceiver
-    {
-
-        public delegate void DeviceFoundHandler(string deviceAddress);
-
-        public event DeviceFoundHandler OnDeviceFound;
-
-        public override void OnReceive(Context context, Intent intent)
-        {
-            string action = intent.Action;
-            try
-            {
-                if (BluetoothDevice.ActionFound.Equals(action))
-                {
-                    BluetoothDevice device = (BluetoothDevice)intent.GetParcelableExtra(BluetoothDevice.ExtraDevice);
-
-                    if (device.Name == "ESP32_GPS") // Use the same name as in the ESP32 code
-                    {
-                        if (device.BondState != Bond.Bonded)
-                        {
-                            device.CreateBond();
-                        }
-
-                        // Trigger the event when the device is found
-                        OnDeviceFound?.Invoke(device.Address);
-
-                        string deviceInfo = device.Name + "\n" + device.Address;
-                        (context as MainActivity)?.RunOnUiThread(() =>
-                        {
-                            ArrayAdapter<string> adapter = ((ArrayAdapter<string>)((MainActivity)context)
-                                .FindViewById<ListView>(Resource.Id.device_list).Adapter);
-                            if (!AdapterContainsItem(adapter, deviceInfo))
-                            {
-                                adapter.Add(deviceInfo);
-                                adapter.NotifyDataSetChanged();
-                            }
-                        });
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                throw ex;
-            }
-        }
-
-        private bool AdapterContainsItem(ArrayAdapter<string> adapter, string item)
-        {
-            for (int i = 0; i < adapter.Count; i++)
-            {
-                if (adapter.GetItem(i) == item)
-                {
-                    return true;
-                }
-            }
-            return false;
-        }
-    }
-
-    public class MyGattCallback : BluetoothGattCallback
-    {
-        private readonly MainActivity _activity;
-        private bool isConnected = false;
-
-
-        public MyGattCallback(MainActivity activity)
-        {
-            _activity = activity;
-        }
-
-        public override void OnConnectionStateChange(BluetoothGatt gatt, GattStatus status, ProfileState newState)
-        {
-            base.OnConnectionStateChange(gatt, status, newState);
-            if (newState == ProfileState.Connected)
-            {
-                _activity.isConnected = true;
-                gatt.DiscoverServices();
-            }
-            else if (newState == ProfileState.Disconnected)
-            {
-                _activity.isConnected = false;
-            }
-            _activity.UpdateConnectionStatusText();
-        }
-
-
-        public override void OnServicesDiscovered(BluetoothGatt gatt, GattStatus status)
-        {
-            base.OnServicesDiscovered(gatt, status);
-            if (status == GattStatus.Success)
-            {
-                _activity.OnServicesDiscovered();
-            }
-        }
-
-        public override void OnCharacteristicChanged(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic)
-        {
-            base.OnCharacteristicChanged(gatt, characteristic);
-            _activity.OnCharacteristicChanged(characteristic);
-        }
-
-        public override void OnDescriptorWrite(BluetoothGatt gatt, BluetoothGattDescriptor descriptor,
-            GattStatus status)
-        {
-            base.OnDescriptorWrite(gatt, descriptor, status);
-        }
-    }
-
-    public class MyScanCallback : ScanCallback
-    {
-        private readonly Action<BluetoothDevice> _onDeviceFound;
-
-        public MyScanCallback(Action<BluetoothDevice> onDeviceFound)
-        {
-            _onDeviceFound = onDeviceFound;
-        }
-
-        public override void OnScanResult([GeneratedEnum] ScanCallbackType callbackType, ScanResult result)
-        {
-            base.OnScanResult(callbackType, result);
-
-            BluetoothDevice device = result.Device;
-            if (device.Name != null && device.Name.Contains("EPS32_GPS")) // Replace with your device name
-            {
-                _onDeviceFound?.Invoke(device);
-            }
         }
     }
 }
