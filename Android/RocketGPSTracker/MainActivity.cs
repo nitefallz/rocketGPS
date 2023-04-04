@@ -18,6 +18,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Android.Content.PM;
+using Android.Graphics;
 using AndroidX.Core.App;
 using AndroidX.Core.Content;
 using AlertDialog = AndroidX.AppCompat.App.AlertDialog;
@@ -51,6 +52,8 @@ namespace RocketGPSTracker
         private AlertDialog _deviceListDialog;
         private BluetoothDeviceReceiver _deviceReceiver;
         private TextView _bleDataTextView;
+        private PolylineOptions _polylineOptions;
+
 
         protected override async void OnCreate(Bundle savedInstanceState)
         {
@@ -140,7 +143,7 @@ namespace RocketGPSTracker
             }
             catch (Exception ex)
             {
-                ; // handle exception
+                Toast.MakeText(this, $"Error {ex.Message}", ToastLength.Long).Show();
             }
         }
 
@@ -243,7 +246,9 @@ namespace RocketGPSTracker
         {
             _googleMap = googleMap;
             _googleMap.UiSettings.ZoomControlsEnabled = true;
-            if(ContextCompat.CheckSelfPermission(this, Manifest.Permission.AccessFineLocation) == Permission.Granted)
+            _polylineOptions = new PolylineOptions().InvokeWidth(10).InvokeColor(Color.Red);
+
+            if (ContextCompat.CheckSelfPermission(this, Manifest.Permission.AccessFineLocation) == Permission.Granted)
             {
                 _googleMap.MyLocationEnabled = true;
             }
@@ -286,6 +291,10 @@ namespace RocketGPSTracker
                 CameraUpdate cameraUpdate = CameraUpdateFactory.NewLatLngZoom(position, 15);
                 _googleMap.MoveCamera(cameraUpdate);
                 AddMarkerAtCoordinates(latitude, longitude); // Add this line
+                _polylineOptions.Add(position);
+
+                // Draw the polyline on the map
+                _googleMap.AddPolyline(_polylineOptions);
             }
             catch (Exception ex)
             {
