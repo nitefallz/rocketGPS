@@ -19,7 +19,7 @@ namespace RocketGPSTracker
             base.OnScanResult(callbackType, result);
 
             BluetoothDevice device = result.Device;
-            if (device.Name != null && device.Name.Contains("EPS32_GPS")) // Replace with your device name
+            if (device.Name != null && device.Name.Contains("ESP32_GPS")) // Replace with your device name
             {
                 _onDeviceFound?.Invoke(device);
             }

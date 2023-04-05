@@ -19,10 +19,11 @@ using Google.Android.Material.Snackbar;
 using Java.Util;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using AlertDialog = AndroidX.AppCompat.App.AlertDialog;
 using Exception = System.Exception;
+using Path = System.IO.Path;
 using Toolbar = AndroidX.AppCompat.Widget.Toolbar;
 
 namespace RocketGPSTracker
@@ -37,7 +38,9 @@ namespace RocketGPSTracker
         private MapView _mapView;
         private GoogleMap _googleMap;
         private const int RequestBluetoothPermissions = 2;
-        private bool _autoCenter = false;
+        private List<Tuple<DateTime, double, double>> _coordinateLog = new List<Tuple<DateTime, double, double>>();
+        private const int RequestPermissionsRequestCode = 1000;
+        private bool _autoCenter = true;
         private ImageButton _toggleCenter;
         private ScanCallback _scanCallback;
         public bool IsConnected = false;
@@ -46,6 +49,7 @@ namespace RocketGPSTracker
         private double _initialLongitude;
         private TextView _bleDataTextView;
         private PolylineOptions _polylineOptions;
+        List<string> permissionsToRequest = new List<string>();
         private static readonly UUID CoordinateServiceUuid = UUID.FromString("4fafc201-1fb5-459e-8fcc-c5c9c331914b");
         private static readonly UUID CoordinateCharacteristicUuid = UUID.FromString("beb5483e-36e1-4688-b7f5-ea07361b26a8");
 
@@ -81,60 +85,7 @@ namespace RocketGPSTracker
                     SaveDeviceAddress(device.Address);
                     ConnectToDevice(device.Address);
                 });
-
-                List<string> permissionsToRequest = new List<string>();
-
-                if (CheckSelfPermission(Manifest.Permission.AccessFineLocation) !=
-                    Android.Content.PM.Permission.Granted)
-                {
-                    permissionsToRequest.Add(Manifest.Permission.AccessFineLocation);
-                }
-
-                if (CheckSelfPermission(Manifest.Permission.Bluetooth) != Android.Content.PM.Permission.Granted)
-                {
-                    permissionsToRequest.Add(Manifest.Permission.Bluetooth);
-                }
-
-                if (CheckSelfPermission(Manifest.Permission.BluetoothAdmin) != Android.Content.PM.Permission.Granted)
-                {
-                    permissionsToRequest.Add(Manifest.Permission.BluetoothAdmin);
-                }
-
-                if (CheckSelfPermission(Manifest.Permission.BluetoothConnect) != Android.Content.PM.Permission.Granted)
-                {
-                    permissionsToRequest.Add(Manifest.Permission.BluetoothConnect);
-                }
-
-                if (CheckSelfPermission(Manifest.Permission.BluetoothScan) != Android.Content.PM.Permission.Granted)
-                {
-                    permissionsToRequest.Add(Manifest.Permission.BluetoothScan);
-                }
-
-                if (permissionsToRequest.Count > 0)
-                {
-                    RequestPermissions(permissionsToRequest.ToArray(), RequestBluetoothPermissions);
-                }
-                else
-                {
-                    string savedDeviceAddress = LoadDeviceAddress();
-                    if (!string.IsNullOrEmpty(savedDeviceAddress))
-                    {
-                        ConnectToDevice(savedDeviceAddress);
-                    }
-                    else
-                    {
-                        if (_bluetoothAdapter.IsEnabled)
-                        {
-                            var scanSettings = new ScanSettings.Builder()
-                                .SetScanMode(Android.Bluetooth.LE.ScanMode.LowLatency)
-                                .Build();
-
-                            _bluetoothAdapter.BluetoothLeScanner.StartScan(new List<ScanFilter>(), scanSettings,
-                                _scanCallback);
-                        }
-
-                    }
-                }
+                RequestPermissionsIfNeeded();
             }
             catch (Exception ex)
             {
@@ -142,11 +93,79 @@ namespace RocketGPSTracker
             }
         }
 
+        private void RequestPermissionsIfNeeded()
+        {
+            List<string> permissionsToRequest = new List<string>();
+
+            
+            if (CheckSelfPermission(Manifest.Permission.AccessFineLocation) != Permission.Granted)
+            {
+                permissionsToRequest.Add(Manifest.Permission.AccessFineLocation);
+            }
+            if (CheckSelfPermission(Manifest.Permission.Bluetooth) != Permission.Granted)
+            {
+                permissionsToRequest.Add(Manifest.Permission.Bluetooth);
+            }
+            if (CheckSelfPermission(Manifest.Permission.BluetoothAdmin) != Permission.Granted)
+            {
+                permissionsToRequest.Add(Manifest.Permission.BluetoothAdmin);
+            }
+            if (CheckSelfPermission(Manifest.Permission.BluetoothConnect) != Permission.Granted)
+            {
+                permissionsToRequest.Add(Manifest.Permission.BluetoothConnect);
+            }
+            if (CheckSelfPermission(Manifest.Permission.BluetoothScan) != Permission.Granted)
+            {
+                permissionsToRequest.Add(Manifest.Permission.BluetoothScan);
+            }
+
+            if (permissionsToRequest.Count > 0)
+            {
+                ActivityCompat.RequestPermissions(this, permissionsToRequest.ToArray(), RequestPermissionsRequestCode);
+            }
+            else
+            {
+                ProceedWithAppLogic();
+            }
+        }
+
+        public override void OnRequestPermissionsResult(int requestCode, string[] permissions, Permission[] grantResults)
+        {
+            if (requestCode == RequestPermissionsRequestCode)
+            {
+                if (AllPermissionsGranted())
+                {
+                    ProceedWithAppLogic();
+                }
+                else
+                {
+                    Snackbar.Make(FindViewById(Android.Resource.Id.Content), "Certain permissions are required to use this app", Snackbar.LengthIndefinite)
+                        .SetAction("OK", v => { RequestPermissionsIfNeeded(); })
+                        .Show();
+                }
+            }
+            base.OnRequestPermissionsResult(requestCode, permissions, grantResults);
+        }
+
+        private bool AllPermissionsGranted()
+        {
+            return CheckSelfPermission(Manifest.Permission.ReadExternalStorage) == Permission.Granted &&
+                   CheckSelfPermission(Manifest.Permission.WriteExternalStorage) == Permission.Granted &&
+                   CheckSelfPermission(Manifest.Permission.AccessFineLocation) == Permission.Granted &&
+                   CheckSelfPermission(Manifest.Permission.Bluetooth) == Permission.Granted &&
+                   CheckSelfPermission(Manifest.Permission.BluetoothAdmin) == Permission.Granted &&
+                   CheckSelfPermission(Manifest.Permission.BluetoothConnect) == Permission.Granted &&
+                   CheckSelfPermission(Manifest.Permission.BluetoothScan) == Permission.Granted;
+        }
+
+
+
         public void OnLocationChanged(Android.Locations.Location location)
         {
             // Update the destination marker with new coordinates
             AddDestinationMarker(location.Latitude, location.Longitude);
         }
+
         public void OnProviderDisabled(string provider) { }
 
         public void OnProviderEnabled(string provider) { }
@@ -155,16 +174,25 @@ namespace RocketGPSTracker
 
         private void SetUpLocationListener()
         {
-            LocationManager locationManager = (LocationManager)GetSystemService(LocationService);
-            string provider = LocationManager.GpsProvider;
+            try
+            {
 
-            if (locationManager.IsProviderEnabled(provider))
-            {
-                locationManager.RequestLocationUpdates(provider, 2000, 1, this);
+
+                LocationManager locationManager = (LocationManager)GetSystemService(LocationService);
+                string provider = LocationManager.GpsProvider;
+
+                if (locationManager.IsProviderEnabled(provider))
+                {
+                    locationManager.RequestLocationUpdates(provider, 2000, 1, this);
+                }
+                else
+                {
+                    Toast.MakeText(this, "GPS provider is not enabled", ToastLength.Short).Show();
+                }
             }
-            else
+            catch (Exception ex)
             {
-                Toast.MakeText(this, "GPS provider is not enabled", ToastLength.Short).Show();
+                Toast.MakeText(this, $"Error {ex.Message}", ToastLength.Long).Show();
             }
         }
 
@@ -215,7 +243,7 @@ namespace RocketGPSTracker
                         if (double.TryParse(coordinates[0], out double latitude) && double.TryParse(coordinates[1], out double longitude))
                         {
                             UpdateMap(latitude, longitude);
-
+                            DedupeAndSaveCoordinates(latitude, longitude).ConfigureAwait(false);
                             // Update the TextView with the data and timestamp
                             RunOnUiThread(() =>
                             {
@@ -229,37 +257,35 @@ namespace RocketGPSTracker
             }
         }
 
-
-
-        private async Task ConnectToDeviceAsync(string deviceAddress)
-        {
-            _bluetoothDevice = _bluetoothAdapter.GetRemoteDevice(deviceAddress);
-            _bluetoothGatt = _bluetoothDevice.ConnectGatt(this, false, new MyGattCallback(this));
-        }
-
         public void OnMapReady(GoogleMap googleMap)
         {
-            _googleMap = googleMap;
-            _googleMap.UiSettings.ZoomControlsEnabled = true;
-            _polylineOptions = new PolylineOptions().InvokeWidth(10).InvokeColor(Color.Red);
+            try
+            {
+                _googleMap = googleMap;
+                _googleMap.UiSettings.ZoomControlsEnabled = true;
+                _polylineOptions = new PolylineOptions().InvokeWidth(10).InvokeColor(Color.Red);
 
-            if (ContextCompat.CheckSelfPermission(this, Manifest.Permission.AccessFineLocation) == Permission.Granted)
-            {
-                _googleMap.MyLocationEnabled = true;
-            }
-            else
-            {
-                ActivityCompat.RequestPermissions(this, new string[] { Manifest.Permission.AccessFineLocation }, 1);
-            }
-            _toggleCenter = FindViewById<ImageButton>(Resource.Id.toggleCenter);
-            _toggleCenter.Click += (sender, e) =>
-            {
-                _autoCenter = !_autoCenter;
-            };
+                if (ContextCompat.CheckSelfPermission(this, Manifest.Permission.AccessFineLocation) ==
+                    Permission.Granted)
+                {
+                    _googleMap.MyLocationEnabled = true;
+                }
+                else
+                {
+                    ActivityCompat.RequestPermissions(this, new string[] { Manifest.Permission.AccessFineLocation }, 1);
+                }
 
-            SetUpLocationListener();
-            _googleMap.MapType = GoogleMap.MapTypeNormal;
-            MoveCameraToCoordinates(_initialLatitude, _initialLongitude);
+                _toggleCenter = FindViewById<ImageButton>(Resource.Id.toggleCenter);
+                _toggleCenter.Click += (sender, e) => { _autoCenter = !_autoCenter; };
+
+                SetUpLocationListener();
+                _googleMap.MapType = GoogleMap.MapTypeNormal;
+                MoveCameraToCoordinates(_initialLatitude, _initialLongitude);
+            }
+            catch (Exception ex)
+            {
+                Toast.MakeText(this, $"Error {ex.Message}", ToastLength.Long).Show();
+            }
 
         }
 
@@ -294,52 +320,28 @@ namespace RocketGPSTracker
                 throw;
             }
         }
+
         public override bool OnCreateOptionsMenu(IMenu menu)
         {
             MenuInflater.Inflate(Resource.Menu.menu_main, menu);
             return true;
         }
 
-
-        public override void OnRequestPermissionsResult(int requestCode, string[] permissions,
-            Android.Content.PM.Permission[] grantResults)
+        private void ProceedWithAppLogic()
         {
-            if (requestCode == RequestBluetoothPermissions)
+            string savedDeviceAddress = LoadDeviceAddress();
+            if (!string.IsNullOrEmpty(savedDeviceAddress))
             {
-                if (grantResults.Length >= 6 &&
-                    grantResults[0] == Android.Content.PM.Permission.Granted &&
-                    grantResults[1] == Android.Content.PM.Permission.Granted &&
-                    grantResults[2] == Android.Content.PM.Permission.Granted &&
-                    grantResults[3] == Android.Content.PM.Permission.Granted &&
-                    grantResults[4] == Android.Content.PM.Permission.Granted &&
-                    grantResults[5] == Android.Content.PM.Permission.Granted)
+                ConnectToDevice(savedDeviceAddress);
+            }
+            else
+            {
+                if (_bluetoothAdapter.IsEnabled)
                 {
-                    string savedDeviceAddress = LoadDeviceAddress();
-                    if (!string.IsNullOrEmpty(savedDeviceAddress))
-                    {
-                        ConnectToDevice(savedDeviceAddress);
-                    }
-                    else
-                    {
-                        if (_bluetoothAdapter.IsEnabled)
-                        {
-                            var scanSettings = new ScanSettings.Builder()
-                                .SetScanMode(Android.Bluetooth.LE.ScanMode.LowLatency)
-                                .Build();
-
-                            _bluetoothAdapter.BluetoothLeScanner.StartScan(new List<ScanFilter>(), scanSettings, _scanCallback);
-                        }
-                    }
-                }
-                else
-                {
-                    Snackbar.Make(FindViewById(Android.Resource.Id.Content), "Permissions are required to use this app",
-                            Snackbar.LengthIndefinite)
-                        .SetAction("OK", v => { })
-                        .Show();
+                    var scanSettings = new ScanSettings.Builder().SetScanMode(Android.Bluetooth.LE.ScanMode.LowLatency).Build();
+                    _bluetoothAdapter.BluetoothLeScanner.StartScan(new List<ScanFilter>(), scanSettings, _scanCallback);
                 }
             }
-            base.OnRequestPermissionsResult(requestCode, permissions, grantResults);
         }
 
         protected override void OnResume()
@@ -416,7 +418,7 @@ namespace RocketGPSTracker
         }
 
 
-        public void UpdateMap(double latitude, double longitude)
+        private void UpdateMap(double latitude, double longitude)
         {
             RunOnUiThread(() =>
             {
@@ -429,6 +431,58 @@ namespace RocketGPSTracker
                 }
                 AddDestinationMarker(latitude, longitude);
             });
+        }
+
+        private async Task SaveCoordinatesToFileAsync(double latitude, double longitude)
+        {
+            try
+            {
+                string fileName = "coordinates_log.txt";
+                var folderPath = Android.OS.Environment.GetExternalStoragePublicDirectory(Android.OS.Environment.DirectoryDocuments);
+
+                string fullPath = Path.Combine(folderPath.ToString(), fileName);
+
+                await using (StreamWriter writer = File.AppendText(fullPath))
+                {
+                    string timestamp = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss");
+                    await writer.WriteLineAsync($"{timestamp} - {latitude},{longitude}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Toast.MakeText(this, $"Error {ex.Message}", ToastLength.Long).Show();
+            }
+        }
+
+
+        private async Task DedupeAndSaveCoordinates(double latitude, double longitude)
+        {
+            DateTime now = DateTime.UtcNow;
+            TimeSpan dedupeInterval = TimeSpan.FromMinutes(5);
+
+            if (_coordinateLog.Any())
+            {
+                var latestEntry = _coordinateLog.Last();
+
+                if (Math.Abs(latitude - latestEntry.Item2) < 0.000001 && Math.Abs(longitude - latestEntry.Item3) < 0.000001)
+                {
+                    if ((now - latestEntry.Item1) >= dedupeInterval)
+                    {
+                        await SaveCoordinatesToFileAsync(latitude, longitude);
+                        _coordinateLog.Add(Tuple.Create(now, latitude, longitude));
+                    }
+                }
+                else
+                {
+                    await SaveCoordinatesToFileAsync(latitude, longitude);
+                    _coordinateLog.Add(Tuple.Create(now, latitude, longitude));
+                }
+            }
+            else
+            {
+                await SaveCoordinatesToFileAsync(latitude, longitude);
+                _coordinateLog.Add(Tuple.Create(now, latitude, longitude));
+            }
         }
     }
 }
