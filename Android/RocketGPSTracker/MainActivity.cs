@@ -1,4 +1,4 @@
-﻿using Android;
+﻿    using Android;
 using Android.App;
 using Android.Bluetooth;
 using Android.Bluetooth.LE;
@@ -21,17 +21,19 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Threading.Tasks;
+    using System.Threading;
+    using System.Threading.Tasks;
 using Exception = System.Exception;
 using Path = System.IO.Path;
 using Toolbar = AndroidX.AppCompat.Widget.Toolbar;
 
 namespace RocketGPSTracker
 {
-    [Activity(Label = "@string/app_name", Theme = "@style/AppTheme.NoActionBar", MainLauncher = true)]
-    public class MainActivity : AppCompatActivity, IOnMapReadyCallback, ILocationListener
+    [Activity(Label = "@string/app_name", Theme = "@style/AppTheme.NoActionBar", MainLauncher = true, ScreenOrientation = ScreenOrientation.Portrait)]
 
+    public class MainActivity : AppCompatActivity, IOnMapReadyCallback, ILocationListener
     {
+
         private BluetoothAdapter _bluetoothAdapter;
         private BluetoothDevice _bluetoothDevice;
         private BluetoothGatt _bluetoothGatt;
@@ -47,10 +49,21 @@ namespace RocketGPSTracker
         private BluetoothGattCharacteristic _coordinateCharacteristic;
         private double _initialLatitude;
         private double _initialLongitude;
+        private double _bleLatitude;
+        private double _bleLongitude;
         private TextView _bleDataTextView;
         private PolylineOptions _polylineOptions;
+        private Marker _destinationMarker;
+        private Marker _bleMarker;
+        LocationManager _locationManager;
+        string _locationProvider;
+        private Android.Locations.Location _location;
+        private BluetoothManager bluetoothManager;
+
+
         List<string> permissionsToRequest = new List<string>();
         private static readonly UUID CoordinateServiceUuid = UUID.FromString("4fafc201-1fb5-459e-8fcc-c5c9c331914b");
+
         private static readonly UUID CoordinateCharacteristicUuid = UUID.FromString("beb5483e-36e1-4688-b7f5-ea07361b26a8");
 
 
@@ -63,8 +76,8 @@ namespace RocketGPSTracker
                 SetContentView(Resource.Layout.activity_main);
                 Toolbar toolbar = FindViewById<Toolbar>(Resource.Id.toolbar);
                 SetSupportActionBar(toolbar);
-
-                BluetoothManager bluetoothManager = (BluetoothManager)GetSystemService(Context.BluetoothService);
+                InitializeLocationManager();
+                bluetoothManager = (BluetoothManager)GetSystemService(Context.BluetoothService);
                 _bluetoothAdapter = bluetoothManager.Adapter;
                 _bleDataTextView = FindViewById<TextView>(Resource.Id.bleDataTextView);
 
@@ -79,12 +92,8 @@ namespace RocketGPSTracker
                 _mapView = FindViewById<MapView>(Resource.Id.mapView);
                 _mapView.OnCreate(savedInstanceState);
                 _mapView.GetMapAsync(this);
-                _scanCallback = new MyScanCallback(device =>
-                {
-                    _bluetoothAdapter.BluetoothLeScanner.StopScan(_scanCallback);
-                    SaveDeviceAddress(device.Address);
-                    ConnectToDevice(device.Address);
-                });
+                var connectButton = FindViewById<Button>(Resource.Id.connectButton);
+                connectButton.Click += ConnectButtonOnClick;
                 RequestPermissionsIfNeeded();
             }
             catch (Exception ex)
@@ -93,27 +102,46 @@ namespace RocketGPSTracker
             }
         }
 
+        private void ConnectButtonOnClick(object sender, EventArgs e)
+        {
+            // Connect to the Bluetooth device here
+            string savedDeviceAddress = LoadDeviceAddress();
+            if (!string.IsNullOrEmpty(savedDeviceAddress))
+            {
+                ConnectToDevice(savedDeviceAddress);
+            }
+        }
+
         private void RequestPermissionsIfNeeded()
         {
             List<string> permissionsToRequest = new List<string>();
 
-            
+
             if (CheckSelfPermission(Manifest.Permission.AccessFineLocation) != Permission.Granted)
             {
                 permissionsToRequest.Add(Manifest.Permission.AccessFineLocation);
             }
+
+            if (CheckSelfPermission(Manifest.Permission.AccessCoarseLocation) != Permission.Granted)
+            {
+                permissionsToRequest.Add(Manifest.Permission.AccessCoarseLocation);
+            }
+
             if (CheckSelfPermission(Manifest.Permission.Bluetooth) != Permission.Granted)
             {
                 permissionsToRequest.Add(Manifest.Permission.Bluetooth);
             }
+
             if (CheckSelfPermission(Manifest.Permission.BluetoothAdmin) != Permission.Granted)
             {
                 permissionsToRequest.Add(Manifest.Permission.BluetoothAdmin);
             }
+
             if (CheckSelfPermission(Manifest.Permission.BluetoothConnect) != Permission.Granted)
             {
                 permissionsToRequest.Add(Manifest.Permission.BluetoothConnect);
             }
+
             if (CheckSelfPermission(Manifest.Permission.BluetoothScan) != Permission.Granted)
             {
                 permissionsToRequest.Add(Manifest.Permission.BluetoothScan);
@@ -125,25 +153,37 @@ namespace RocketGPSTracker
             }
             else
             {
-                ProceedWithAppLogic();
+                if (_bluetoothAdapter.IsEnabled)
+                {
+                    _scanCallback = new MyScanCallback(device =>
+                    {
+                        _bluetoothAdapter.BluetoothLeScanner.StopScan(_scanCallback);
+                        SaveDeviceAddress(device.Address);
+                    });
+                    var scanSettings = new ScanSettings.Builder().SetScanMode(Android.Bluetooth.LE.ScanMode.LowLatency).Build();
+                    _bluetoothAdapter.BluetoothLeScanner.StartScan(new List<ScanFilter>(), scanSettings, _scanCallback);
+                }
             }
         }
 
-        public override void OnRequestPermissionsResult(int requestCode, string[] permissions, Permission[] grantResults)
+        public override void OnRequestPermissionsResult(int requestCode, string[] permissions,
+            Permission[] grantResults)
         {
             if (requestCode == RequestPermissionsRequestCode)
             {
                 if (AllPermissionsGranted())
                 {
-                    ProceedWithAppLogic();
+                    ; // I guess maybe a singleton for the scanner on first run
                 }
                 else
                 {
-                    Snackbar.Make(FindViewById(Android.Resource.Id.Content), "Certain permissions are required to use this app", Snackbar.LengthIndefinite)
+                    Snackbar.Make(FindViewById(Android.Resource.Id.Content),
+                            "Certain permissions are required to use this app", Snackbar.LengthIndefinite)
                         .SetAction("OK", v => { RequestPermissionsIfNeeded(); })
                         .Show();
                 }
             }
+
             base.OnRequestPermissionsResult(requestCode, permissions, grantResults);
         }
 
@@ -160,17 +200,26 @@ namespace RocketGPSTracker
 
 
 
-        public void OnLocationChanged(Android.Locations.Location location)
+
+
+        public void OnProviderDisabled(string provider)
         {
-            // Update the destination marker with new coordinates
-            AddDestinationMarker(location.Latitude, location.Longitude);
         }
 
-        public void OnProviderDisabled(string provider) { }
+        public void OnProviderEnabled(string provider)
+        {
+        }
 
-        public void OnProviderEnabled(string provider) { }
+        public void OnStatusChanged(string provider, [GeneratedEnum] Availability status, Bundle extras)
+        {
+        }
 
-        public void OnStatusChanged(string provider, [GeneratedEnum] Availability status, Bundle extras) { }
+        protected override void OnStart()
+        {
+            base.OnStart();
+        }
+
+
 
         private void SetUpLocationListener()
         {
@@ -199,9 +248,26 @@ namespace RocketGPSTracker
 
         private void ConnectToDevice(string deviceAddress)
         {
-            _bluetoothDevice = _bluetoothAdapter.GetRemoteDevice(deviceAddress);
-            _bluetoothGatt = _bluetoothDevice.ConnectGatt(this, false, new MyGattCallback(this));
+            try
+            {
+                _bluetoothDevice = _bluetoothAdapter.GetRemoteDevice(deviceAddress);
+
+                // Set preferred connection parameters
+               // BluetoothGattCharacteristic characteristic = _bluetoothGatt.GetService(CoordinateServiceUuid).GetCharacteristic(CoordinateCharacteristicUuid);
+               //characteristic.WriteType = GattWriteType.Default;
+
+                _bluetoothGatt = _bluetoothDevice.ConnectGatt(this, false, new MyGattCallback(this), BluetoothTransports.Le);
+            }
+            catch (Exception ex)
+            {
+                Toast.MakeText(this, $"Error {ex.Message}", ToastLength.Long).Show();
+            }
         }
+
+
+
+
+
 
         public void OnServicesDiscovered()
         {
@@ -220,6 +286,7 @@ namespace RocketGPSTracker
                 }
             }
         }
+
         public void UpdateConnectionStatusText()
         {
             RunOnUiThread(() =>
@@ -229,33 +296,6 @@ namespace RocketGPSTracker
             });
         }
 
-
-        public void OnCharacteristicChanged(BluetoothGattCharacteristic characteristic)
-        {
-            if (characteristic.Uuid.Equals(CoordinateCharacteristicUuid))
-            {
-                string receivedData = characteristic.GetStringValue(0);
-                if (!string.IsNullOrEmpty(receivedData))
-                {
-                    string[] coordinates = receivedData.Split(',');
-                    if (coordinates.Length == 2)
-                    {
-                        if (double.TryParse(coordinates[0], out double latitude) && double.TryParse(coordinates[1], out double longitude))
-                        {
-                            UpdateMap(latitude, longitude);
-                            DedupeAndSaveCoordinates(latitude, longitude).ConfigureAwait(false);
-                            // Update the TextView with the data and timestamp
-                            RunOnUiThread(() =>
-                            {
-                                _bleDataTextView.Text = $"Data: {receivedData}\nTimestamp: {DateTime.Now.ToString("HH:mm:ss.fff")}";
-                                UpdateConnectionStatusText();
-                            });
-
-                        }
-                    }
-                }
-            }
-        }
 
         public void OnMapReady(GoogleMap googleMap)
         {
@@ -289,36 +329,93 @@ namespace RocketGPSTracker
 
         }
 
-        private void AddDestinationMarker(double latitude, double longitude)
+        private void UpdateMap(double phoneLatitude, double phoneLongitude, double bleLatitude, double bleLongitude)
         {
-            LatLng destination = new LatLng(latitude, longitude);
-            MarkerOptions markerOptions = new MarkerOptions();
-            markerOptions.SetPosition(destination);
-            markerOptions.SetTitle("Destination");
-            markerOptions.SetIcon(BitmapDescriptorFactory.DefaultMarker(BitmapDescriptorFactory.HueBlue)); // Set the marker color to blue
-            _googleMap.AddMarker(markerOptions);
+            RunOnUiThread(() =>
+            {
+                LatLng phonePosition = new LatLng(phoneLatitude, phoneLongitude);
+                if (_destinationMarker == null)
+                {
+                    _destinationMarker = _googleMap.AddMarker(new MarkerOptions().SetPosition(phonePosition)
+                        .SetTitle("Phone GPS")
+                        .SetIcon(BitmapDescriptorFactory.DefaultMarker(BitmapDescriptorFactory.HueBlue)));
+                }
+                else
+                {
+                    _destinationMarker.Position = phonePosition;
+                }
+
+                MoveCameraToCoordinates(bleLatitude, bleLongitude);
+            });
         }
+
+
 
 
         private void MoveCameraToCoordinates(double latitude, double longitude)
         {
             try
             {
-                //if (_googleMap == null) return;
-
                 LatLng position = new LatLng(latitude, longitude);
-                CameraUpdate cameraUpdate = CameraUpdateFactory.NewLatLngZoom(position, 15);
-                _googleMap.MoveCamera(cameraUpdate);
-                AddMarkerAtCoordinates(latitude, longitude); // Add this line
-                _polylineOptions.Add(position);
 
+                if (_bleMarker == null)
+                {
+                    if (_bleMarker == null)
+                    {
+                        _bleMarker = _googleMap.AddMarker(new MarkerOptions()
+                            .SetPosition(position)
+                            .SetTitle("BLE GPS")
+                            .SetSnippet($"Latest Received Coords: {_bleLatitude}, {_bleLongitude}") // Add this line
+                            .SetIcon(BitmapDescriptorFactory.DefaultMarker(BitmapDescriptorFactory.HueRed)));
+                    }
+                }
+                else
+                {
+                    _bleMarker.Position = position;
+                }
+
+                CameraUpdate cameraUpdate = CameraUpdateFactory.NewLatLngZoom(position, 15);
+
+                _polylineOptions.Add(position);
                 // Draw the polyline on the map
                 _googleMap.AddPolyline(_polylineOptions);
+                if (_autoCenter)
+                    _googleMap.MoveCamera(cameraUpdate);
             }
             catch (Exception ex)
             {
-                throw;
+                throw ex;
             }
+        }
+
+        public void OnCharacteristicChanged(BluetoothGattCharacteristic characteristic)
+        {
+            if (characteristic.Uuid.Equals(CoordinateCharacteristicUuid))
+            {
+                string receivedData = characteristic.GetStringValue(0);
+                if (!string.IsNullOrEmpty(receivedData))
+                {
+                    string[] coordinates = receivedData.Split(',');
+                    if (coordinates.Length == 2)
+                    {
+                        if (double.TryParse(coordinates[0], out _bleLatitude) && double.TryParse(coordinates[1], out _bleLongitude))
+                        {
+                            RunOnUiThread(() =>
+                            {
+                                _bleDataTextView.Text = $"Data: {receivedData}\nTimestamp: {DateTime.Now.ToString("HH:mm:ss.fff")}";
+                                UpdateConnectionStatusText();
+                                UpdateBleMarkerSnippet(); // Add this line
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+
+        public void OnLocationChanged(Android.Locations.Location location)
+        {
+            UpdateMap(location.Latitude, location.Longitude, _bleLatitude, _bleLongitude);
         }
 
         public override bool OnCreateOptionsMenu(IMenu menu)
@@ -327,27 +424,12 @@ namespace RocketGPSTracker
             return true;
         }
 
-        private void ProceedWithAppLogic()
-        {
-            string savedDeviceAddress = LoadDeviceAddress();
-            if (!string.IsNullOrEmpty(savedDeviceAddress))
-            {
-                ConnectToDevice(savedDeviceAddress);
-            }
-            else
-            {
-                if (_bluetoothAdapter.IsEnabled)
-                {
-                    var scanSettings = new ScanSettings.Builder().SetScanMode(Android.Bluetooth.LE.ScanMode.LowLatency).Build();
-                    _bluetoothAdapter.BluetoothLeScanner.StartScan(new List<ScanFilter>(), scanSettings, _scanCallback);
-                }
-            }
-        }
 
         protected override void OnResume()
         {
             base.OnResume();
             _mapView.OnResume();
+            _locationManager.RequestLocationUpdates(_locationProvider, 0, 0, this);
 
         }
 
@@ -355,6 +437,7 @@ namespace RocketGPSTracker
         {
             _mapView.OnPause();
             base.OnPause();
+            _locationManager.RemoveUpdates(this);
         }
 
         protected override void OnDestroy()
@@ -418,27 +501,15 @@ namespace RocketGPSTracker
         }
 
 
-        private void UpdateMap(double latitude, double longitude)
-        {
-            RunOnUiThread(() =>
-            {
-                LatLng newPosition = new LatLng(latitude, longitude);
-                _googleMap.Clear();
-                _googleMap.AddMarker(new MarkerOptions().SetPosition(newPosition).SetTitle("Current Position"));
-                if (_autoCenter)
-                {
-                    _googleMap.MoveCamera(CameraUpdateFactory.NewLatLngZoom(newPosition, 15));
-                }
-                AddDestinationMarker(latitude, longitude);
-            });
-        }
+
 
         private async Task SaveCoordinatesToFileAsync(double latitude, double longitude)
         {
             try
             {
                 string fileName = "coordinates_log.txt";
-                var folderPath = Android.OS.Environment.GetExternalStoragePublicDirectory(Android.OS.Environment.DirectoryDocuments);
+                var folderPath =
+                    Android.OS.Environment.GetExternalStoragePublicDirectory(Android.OS.Environment.DirectoryDocuments);
 
                 string fullPath = Path.Combine(folderPath.ToString(), fileName);
 
@@ -464,7 +535,8 @@ namespace RocketGPSTracker
             {
                 var latestEntry = _coordinateLog.Last();
 
-                if (Math.Abs(latitude - latestEntry.Item2) < 0.000001 && Math.Abs(longitude - latestEntry.Item3) < 0.000001)
+                if (Math.Abs(latitude - latestEntry.Item2) < 0.000001 &&
+                    Math.Abs(longitude - latestEntry.Item3) < 0.000001)
                 {
                     if ((now - latestEntry.Item1) >= dedupeInterval)
                     {
@@ -484,5 +556,36 @@ namespace RocketGPSTracker
                 _coordinateLog.Add(Tuple.Create(now, latitude, longitude));
             }
         }
+
+        private void InitializeLocationManager()
+        {
+            _locationManager = (LocationManager)GetSystemService(LocationService);
+
+            Criteria criteriaForLocationProvider = new Criteria
+            {
+                Accuracy = Accuracy.Fine,
+                PowerRequirement = Power.NoRequirement
+            };
+
+            IList<string> acceptableLocationProviders =
+                _locationManager.GetProviders(criteriaForLocationProvider, true);
+            if (acceptableLocationProviders.Any())
+            {
+                _locationProvider = acceptableLocationProviders.First();
+            }
+            else
+            {
+                _locationProvider = string.Empty;
+            }
+        }
+
+        private void UpdateBleMarkerSnippet()
+        {
+            if (_bleMarker != null)
+            {
+                _bleMarker.Snippet = $"Latest Received Coords: {_bleLatitude}, {_bleLongitude}";
+            }
+        }
+
     }
 }

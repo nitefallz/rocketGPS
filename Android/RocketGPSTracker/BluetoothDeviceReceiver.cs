@@ -1,4 +1,4 @@
-﻿using Android.Bluetooth;
+﻿/*using Android.Bluetooth;
 using Android.Content;
 using Android.Widget;
 using System;
@@ -49,4 +49,4 @@ namespace RocketGPSTracker
             return false;
         }
     }
-}
+}*/

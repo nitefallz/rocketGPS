@@ -1,13 +1,13 @@
-﻿using Android.Bluetooth;
+﻿using System;
+using Android.Bluetooth;
+using Android.Util;
 
 namespace RocketGPSTracker
 {
     public class MyGattCallback : BluetoothGattCallback
     {
         private readonly MainActivity _activity;
-        private bool isConnected = false;
-
-
+        
         public MyGattCallback(MainActivity activity)
         {
             _activity = activity;
@@ -15,17 +15,28 @@ namespace RocketGPSTracker
 
         public override void OnConnectionStateChange(BluetoothGatt gatt, GattStatus status, ProfileState newState)
         {
-            base.OnConnectionStateChange(gatt, status, newState);
-            if (newState == ProfileState.Connected)
+            try
             {
-                _activity.IsConnected = true;
-                gatt.DiscoverServices();
+                base.OnConnectionStateChange(gatt, status, newState);
+
+                Log.Debug("MyGattCallback", $"OnConnectionStateChange: status={status}, newState={newState}");
+
+                if (newState == ProfileState.Connected)
+                {
+                    _activity.IsConnected = true;
+                    gatt.DiscoverServices();
+                }
+                else if (newState == ProfileState.Disconnected)
+                {
+                    _activity.IsConnected = false;
+                }
+
+                _activity.UpdateConnectionStatusText();
             }
-            else if (newState == ProfileState.Disconnected)
+            catch (Exception ex)
             {
-                _activity.IsConnected = false;
+                throw ex;
             }
-            _activity.UpdateConnectionStatusText();
         }
 
 
