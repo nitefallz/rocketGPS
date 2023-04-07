@@ -1,4 +1,4 @@
-﻿    using Android;
+﻿using Android;
 using Android.App;
 using Android.Bluetooth;
 using Android.Bluetooth.LE;
@@ -21,8 +21,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-    using System.Threading;
-    using System.Threading.Tasks;
+using System.Threading.Tasks;
 using Exception = System.Exception;
 using Path = System.IO.Path;
 using Toolbar = AndroidX.AppCompat.Widget.Toolbar;
@@ -37,33 +36,37 @@ namespace RocketGPSTracker
         private BluetoothAdapter _bluetoothAdapter;
         private BluetoothDevice _bluetoothDevice;
         private BluetoothGatt _bluetoothGatt;
+        private BluetoothGattCharacteristic _coordinateCharacteristic;
+        private BluetoothManager bluetoothManager;
+
         private MapView _mapView;
         private GoogleMap _googleMap;
-        private const int RequestBluetoothPermissions = 2;
-        private List<Tuple<DateTime, double, double>> _coordinateLog = new List<Tuple<DateTime, double, double>>();
-        private const int RequestPermissionsRequestCode = 1000;
-        private bool _autoCenter = true;
+        private Marker _destinationMarker;
+        private Marker _bleMarker;
+
+        private TextView _bleDataTextView;
+
         private ImageButton _toggleCenter;
-        private ScanCallback _scanCallback;
-        public bool IsConnected = false;
-        private BluetoothGattCharacteristic _coordinateCharacteristic;
+
+        private const int RequestPermissionsRequestCode = 1000;
+
+        private List<Tuple<DateTime, double, double>> _coordinateLog = new List<Tuple<DateTime, double, double>>();
+        private PolylineOptions _polylineOptions;
+
         private double _initialLatitude;
         private double _initialLongitude;
         private double _bleLatitude;
         private double _bleLongitude;
-        private TextView _bleDataTextView;
-        private PolylineOptions _polylineOptions;
-        private Marker _destinationMarker;
-        private Marker _bleMarker;
-        LocationManager _locationManager;
-        string _locationProvider;
-        private Android.Locations.Location _location;
-        private BluetoothManager bluetoothManager;
 
+        public bool IsConnected = false;
+        private bool _autoCenter = true;
 
-        List<string> permissionsToRequest = new List<string>();
+        private LocationManager _locationManager;
+        private string _locationProvider;
+        
+        private ScanCallback _scanCallback;
+
         private static readonly UUID CoordinateServiceUuid = UUID.FromString("4fafc201-1fb5-459e-8fcc-c5c9c331914b");
-
         private static readonly UUID CoordinateCharacteristicUuid = UUID.FromString("beb5483e-36e1-4688-b7f5-ea07361b26a8");
 
 
@@ -71,29 +74,41 @@ namespace RocketGPSTracker
         {
             try
             {
+                // Base setup
                 base.OnCreate(savedInstanceState);
                 Xamarin.Essentials.Platform.Init(this, savedInstanceState);
                 SetContentView(Resource.Layout.activity_main);
+
+                // Toolbar
                 Toolbar toolbar = FindViewById<Toolbar>(Resource.Id.toolbar);
                 SetSupportActionBar(toolbar);
+
+                // Location
                 InitializeLocationManager();
+
+                // Bluetooth
                 bluetoothManager = (BluetoothManager)GetSystemService(Context.BluetoothService);
                 _bluetoothAdapter = bluetoothManager.Adapter;
+
+                // BLE data display
                 _bleDataTextView = FindViewById<TextView>(Resource.Id.bleDataTextView);
 
-
+                // Map setup
                 _initialLatitude = 39.771823; //40.1630475,-76.3007722
                 _initialLongitude = -74.897318; //39.771823, -74.897318
 
                 ImageButton mapTypeToggleButton = FindViewById<ImageButton>(Resource.Id.mapTypeToggleButton);
-
                 mapTypeToggleButton.Click += MapTypeToggleButtonOnClick;
 
                 _mapView = FindViewById<MapView>(Resource.Id.mapView);
                 _mapView.OnCreate(savedInstanceState);
                 _mapView.GetMapAsync(this);
+
+                // Connect button
                 var connectButton = FindViewById<Button>(Resource.Id.connectButton);
                 connectButton.Click += ConnectButtonOnClick;
+
+                // Request permissions
                 RequestPermissionsIfNeeded();
             }
             catch (Exception ex)
@@ -101,6 +116,7 @@ namespace RocketGPSTracker
                 Toast.MakeText(this, $"Error {ex.Message}", ToastLength.Long).Show();
             }
         }
+
 
         private void ConnectButtonOnClick(object sender, EventArgs e)
         {
@@ -251,11 +267,6 @@ namespace RocketGPSTracker
             try
             {
                 _bluetoothDevice = _bluetoothAdapter.GetRemoteDevice(deviceAddress);
-
-                // Set preferred connection parameters
-               // BluetoothGattCharacteristic characteristic = _bluetoothGatt.GetService(CoordinateServiceUuid).GetCharacteristic(CoordinateCharacteristicUuid);
-               //characteristic.WriteType = GattWriteType.Default;
-
                 _bluetoothGatt = _bluetoothDevice.ConnectGatt(this, false, new MyGattCallback(this), BluetoothTransports.Le);
             }
             catch (Exception ex)
@@ -263,12 +274,7 @@ namespace RocketGPSTracker
                 Toast.MakeText(this, $"Error {ex.Message}", ToastLength.Long).Show();
             }
         }
-
-
-
-
-
-
+        
         public void OnServicesDiscovered()
         {
             BluetoothGattService coordinateService = _bluetoothGatt.GetService(CoordinateServiceUuid);
@@ -287,14 +293,7 @@ namespace RocketGPSTracker
             }
         }
 
-        public void UpdateConnectionStatusText()
-        {
-            RunOnUiThread(() =>
-            {
-                string connectionStatus = IsConnected ? "Connected" : "Disconnected";
-                _bleDataTextView.Text += $"\nBluetooth Status: {connectionStatus}";
-            });
-        }
+        
 
 
         public void OnMapReady(GoogleMap googleMap)
@@ -402,7 +401,8 @@ namespace RocketGPSTracker
                         {
                             RunOnUiThread(() =>
                             {
-                                _bleDataTextView.Text = $"Data: {receivedData}\nTimestamp: {DateTime.Now.ToString("HH:mm:ss.fff")}";
+                                _bleDataTextView.SetText("", TextView.BufferType.Normal); // Clear the text before appending new data
+                                _bleDataTextView.Append($"Data: {receivedData}\nTimestamp: {DateTime.Now.ToString("HH:mm:ss.fff")}");
                                 UpdateConnectionStatusText();
                                 UpdateBleMarkerSnippet(); // Add this line
                             });
@@ -412,6 +412,14 @@ namespace RocketGPSTracker
             }
         }
 
+        public void UpdateConnectionStatusText()
+        {
+            RunOnUiThread(() =>
+            {
+                string connectionStatus = IsConnected ? "Connected" : "Disconnected";
+                _bleDataTextView.Append($"\nBluetooth Status: {connectionStatus}");
+            });
+        }
 
         public void OnLocationChanged(Android.Locations.Location location)
         {
