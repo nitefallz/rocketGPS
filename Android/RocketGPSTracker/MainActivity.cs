@@ -404,6 +404,7 @@ namespace RocketGPSTracker
                                 _bleDataTextView.SetText("", TextView.BufferType.Normal); // Clear the text before appending new data
                                 _bleDataTextView.Append($"Data: {receivedData}\nTimestamp: {DateTime.Now.ToString("HH:mm:ss.fff")}");
                                 UpdateConnectionStatusText();
+                                DedupeAndSaveCoordinates(_bleLatitude, _bleLongitude);
                                 UpdateBleMarkerSnippet(); // Add this line
                             });
                         }
